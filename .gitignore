@@ -1,0 +1,23 @@
+# Swift build products and local package state
+.build/
+.swiftpm/
+
+# Generated deliverables and runtime data
+outputs/
+*.app/
+*.sqlite*
+*.csv
+*.zip
+*.log
+
+# macOS and editor metadata
+.DS_Store
+._*
+.idea/
+.vscode/
+
+# Local credentials and configuration
+.env
+.env.*
+*.pem
+*.key

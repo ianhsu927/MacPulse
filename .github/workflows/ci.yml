@@ -1,0 +1,58 @@
+name: macOS build and tests
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: ${{ matrix.runner }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [macos-15, macos-26]
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Check Apple Silicon toolchain
+        run: |
+          test "$(uname -m)" = arm64
+          xcodebuild -version
+          swift --version
+
+      - name: Run isolated core validation
+        run: ./verify.sh
+
+      - name: Run XCTest
+        run: swift test
+
+      - name: Build application
+        run: ./build.sh
+
+      - name: Verify and package application
+        run: |
+          codesign --verify --deep --strict outputs/MacPulse.app
+          plutil -lint outputs/MacPulse.app/Contents/Info.plist
+          ditto --norsrc --noextattr --noqtn -c -k --keepParent outputs/MacPulse.app "outputs/MacPulse-${{ matrix.runner }}.zip"
+          mkdir -p "$RUNNER_TEMP/macpulse-package-check"
+          ditto -x -k "outputs/MacPulse-${{ matrix.runner }}.zip" "$RUNNER_TEMP/macpulse-package-check"
+          codesign --verify --deep --strict "$RUNNER_TEMP/macpulse-package-check/MacPulse.app"
+
+      - name: Upload application ZIP
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          path: outputs/MacPulse-${{ matrix.runner }}.zip
+          archive: false
+          if-no-files-found: error
+          retention-days: 14

@@ -2,9 +2,9 @@
 
 **English** · [简体中文](README.zh-CN.md)
 
-MacPulse is a native Mac app built with SwiftUI and Apple Charts. It records recent CPU frequency, GPU usage, memory usage, and network receive/send rates. It supports Apple Silicon Macs running macOS 14 or later. The current version is 1.2.0.
+MacPulse is a native Mac app built with SwiftUI and Apple Charts. It records recent CPU frequency, GPU usage, memory usage, and network receive/send rates. It supports Apple Silicon Macs running macOS 14 or later. The current version is 1.2.1.
 
-Version 1.2.0 adds Chinese and English interfaces. All four chart cards keep a fixed height, with hover timestamps in a reserved footer. It also includes the 1.1.2 fixes for curves connecting across short recording pauses and excessive queries in long history ranges.
+Version 1.2.1 simplifies the interface to readings and controls, removing slogans, subtitles, and explanatory copy. Measurement explanations now live in these English and Chinese README files. Chinese/English switching, fixed chart heights, pause gaps, and efficient long-range history queries remain available.
 
 ## Use
 
@@ -22,7 +22,7 @@ Before upgrading from 1.0, quit the old app before opening the new version. The 
 
 Memory readings come from macOS memory statistics. They represent used physical memory, including physical storage occupied by the compressor and excluding reclaimable file caches. Charts use GiB (1 GiB = 1,073,741,824 bytes). This is not the same as memory pressure. CPU frequency comes from IOKit / IOReport channels and is the active-residency-weighted average clock during the sampling interval, rather than an independent instantaneous clock reading for every core.
 
-GPU usage primarily comes from IOReport GPU performance-state residency counters. It measures the percentage of the sampling interval spent in active GPU states; it does not measure GPU memory or occupancy of individual execution units. If this channel is unavailable and macOS exposes exactly one trustworthy GPU driver utilization reading, the app uses IOKit's `Device Utilization %` and identifies it as a fallback source. That reading is defined by the driver and is not treated as an IOReport interval average.
+GPU usage primarily comes from IOReport GPU performance-state residency counters. It measures the percentage of the sampling interval spent in active GPU states; it does not measure GPU memory or occupancy of individual execution units. If this channel is unavailable and macOS exposes exactly one trustworthy GPU driver utilization reading, the app uses IOKit's `Device Utilization %` and shows a short **Fallback** marker. That reading is defined by the driver and is not treated as an IOReport interval average.
 
 Network charts show received and sent bytes per second separately. Rates use differences between 64-bit interface byte counters divided by the actual elapsed interval. The app counts connected physical `enN` Ethernet and Wi-Fi interfaces, including USB adapters exposed in that form when macOS confirms an active link. It excludes disconnected Thunderbolt ports and loopback, VPN, bridge, and AWDL interface names to avoid duplicating traffic across virtual interfaces. Display units adapt to B/s, KiB/s, MiB/s, or GiB/s in powers of 1,024; CSV stores bytes per second. These are traffic rates, rather than a percentage of link capacity or traffic for individual apps. The first sample, pause/resume, sleep/wake, interface-set changes, and counter resets establish a new baseline; unavailable rates remain blank.
 
@@ -30,7 +30,7 @@ IOReport is a system interface without a public stability guarantee. CPU and GPU
 
 All samples and history stay on the Mac by default. The app requires no account, sends no network requests, uploads no samples, and installs no system background service. Network monitoring reads local counters without initiating a speed test. The database is stored at `~/Library/Application Support/MacPulse/history.sqlite`; CSV is saved to the location you choose.
 
-CSV uses stable English column names, UTC timestamps, and raw numeric units regardless of the interface language. The `frequency_source`, `gpu_source`, and `network_source` fields preserve the original measurement-source and diagnostic text at collection time. Existing records are not translated again, so these fields may contain Chinese. Source descriptions shown in the interface follow your selected language.
+CSV uses stable English column names, UTC timestamps, and raw numeric units regardless of the interface language. The `frequency_source`, `gpu_source`, and `network_source` fields preserve the original measurement-source and diagnostic text at collection time. Existing records are not translated again, so these fields may contain Chinese.
 
 ## Build
 

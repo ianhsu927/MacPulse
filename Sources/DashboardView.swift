@@ -90,7 +90,7 @@ struct DashboardView: View {
             Button(model.text("取消", "Cancel"), role: .cancel) {}
             Button(model.text("清空记录", "Clear Records"), role: .destructive) { model.clearHistory() }
         } message: {
-            Text(model.text("将删除已保存的采样记录。正在进行的采集会继续生成新记录。", "This deletes saved samples. Active recording will continue to create new records."))
+            Text(model.text("将删除已保存的采样记录。", "This deletes saved samples."))
         }
     }
 
@@ -102,14 +102,9 @@ struct DashboardView: View {
                     .foregroundStyle(Palette.performance)
                     .frame(width: 38, height: 38)
                     .background(Palette.performance.opacity(0.10), in: RoundedRectangle(cornerRadius: 11))
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("MacPulse").font(.system(size: 19, weight: .bold, design: .rounded))
-                    Text(model.text("每一刻，都有迹可循", "Every moment, recorded")).font(.system(size: 10)).foregroundStyle(.secondary)
-                        .lineLimit(1).minimumScaleFactor(0.8)
-                }
+                Text("MacPulse").font(.system(size: 19, weight: .bold, design: .rounded))
             }
             VStack(alignment: .leading, spacing: 10) {
-                Text(model.text("工作空间", "WORKSPACE")).font(.system(size: 10, weight: .semibold)).foregroundStyle(.secondary)
                 ForEach(AppSection.allCases, id: \.self) { item in
                     Button {
                         section = item
@@ -143,11 +138,6 @@ struct DashboardView: View {
                             .lineLimit(1).minimumScaleFactor(0.8)
                     }
                 }
-                Divider()
-                Label(model.text("仅在本机保存", "Saved on this Mac"), systemImage: "lock.shield")
-                    .font(.system(size: 11)).foregroundStyle(.secondary)
-                Text(model.text("关闭窗口后继续采集\n退出应用后停止记录", "Recording continues with the window closed.\nQuit the app to stop recording."))
-                    .font(.system(size: 10)).foregroundStyle(.tertiary).lineSpacing(4)
             }
         }
         .padding(.horizontal, 18).padding(.top, 22).padding(.bottom, 24)
@@ -160,9 +150,6 @@ struct DashboardView: View {
             VStack(alignment: .leading, spacing: 5) {
                 Text(section == .overview ? model.text("性能记录", "Performance History") : model.text("记录与设置", "Recording & Settings"))
                     .font(.system(size: 23, weight: .bold))
-                    .lineLimit(1).minimumScaleFactor(0.85)
-                Text(section == .overview ? model.text("CPU、GPU、内存与网络，记录这台 Mac 的每一刻。", "CPU, GPU, memory and network activity over time.") : model.text("调整采样节奏，管理本机保存的历史记录。", "Adjust sampling and manage your local history."))
-                    .font(.system(size: 11)).foregroundStyle(.secondary)
                     .lineLimit(1).minimumScaleFactor(0.85)
             }
             Spacer(minLength: 12)
@@ -181,7 +168,7 @@ struct DashboardView: View {
             .help(model.isRecording ? model.text("暂停采集（⌘P）", "Pause recording (⌘P)") : model.text("继续采集（⌘P）", "Resume recording (⌘P)"))
             .accessibilityLabel(model.isRecording ? model.text("暂停采集", "Pause Recording") : model.text("继续采集", "Resume Recording"))
             Button { model.exportCSV() } label: { Label(model.text("导出", "Export"), systemImage: "square.and.arrow.up") }
-                .disabled(model.samples.isEmpty).help(model.text("导出当前时间范围的全部原始记录", "Export all original samples in the current time range"))
+                .disabled(model.samples.isEmpty).help(model.text("导出 CSV", "Export CSV"))
         }
         .buttonStyle(.bordered)
         .padding(.horizontal, 22).padding(.vertical, 18)
@@ -198,9 +185,9 @@ struct DashboardView: View {
             statCard(model.text("CPU 使用率", "CPU Usage"), icon: "cpu", value: MetricFormat.percent(model.latest?.cpuUsagePercent), unit: "%", color: Palette.cpu,
                      detail: model.text("性能核 \(MetricFormat.frequency(model.latest?.performanceMHz)) · 能效核 \(MetricFormat.frequency(model.latest?.efficiencyMHz)) GHz", "P \(MetricFormat.frequency(model.latest?.performanceMHz)) · E \(MetricFormat.frequency(model.latest?.efficiencyMHz)) GHz"))
             statCard(model.text("GPU 使用率", "GPU Usage"), icon: "square.stack.3d.up.fill", value: MetricFormat.percent(model.latest?.gpuUsagePercent), unit: "%", color: Palette.gpu,
-                    detail: model.latest?.gpuUsagePercent == nil ? model.text("等待有效 GPU 样本", "Waiting for a valid GPU sample") : model.text("系统 GPU 忙碌程度", "GPU activity"))
+                    detail: model.latest?.gpuUsagePercent == nil ? model.text("暂不可用", "Unavailable") : model.latest?.gpuSource?.contains("备用来源") == true ? model.text("备用", "Fallback") : "")
             statCard(model.text("内存占用", "Memory Used"), icon: "memorychip", value: MetricFormat.gibibytes(model.latest?.memoryUsedBytes), unit: "GiB", color: Palette.memory,
-                     detail: model.text("占物理内存 \(MetricFormat.percent(model.latest == nil ? nil : model.memoryPercent))%", "\(MetricFormat.percent(model.latest == nil ? nil : model.memoryPercent))% of physical memory"))
+                     detail: "\(MetricFormat.percent(model.latest == nil ? nil : model.memoryPercent))%")
             networkStatCard
         }
         HStack {
@@ -250,6 +237,7 @@ struct DashboardView: View {
             }
             Text(detail).font(.system(size: 9)).foregroundStyle(.tertiary)
                 .lineLimit(1).minimumScaleFactor(0.8)
+                .frame(height: 11, alignment: .leading)
         }
         .padding(14).frame(maxWidth: .infinity, alignment: .leading)
         .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 12))
@@ -271,9 +259,10 @@ struct DashboardView: View {
                     .lineLimit(1).minimumScaleFactor(0.8)
                 Text(download.unit).font(.system(size: 11)).foregroundStyle(.secondary)
             }
-            Text(model.text("↑ \(MetricFormat.rateLabel(model.latest?.networkSentBytesPerSecond)) · 物理网卡合计", "↑ \(MetricFormat.rateLabel(model.latest?.networkSentBytesPerSecond)) · Physical interfaces"))
+            Text("↑ \(MetricFormat.rateLabel(model.latest?.networkSentBytesPerSecond))")
                 .font(.system(size: 9)).foregroundStyle(.tertiary)
                 .lineLimit(1).minimumScaleFactor(0.8)
+                .frame(height: 11, alignment: .leading)
         }
         .padding(14).frame(maxWidth: .infinity, alignment: .leading)
         .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 12))
@@ -284,11 +273,7 @@ struct DashboardView: View {
         VStack(alignment: .leading, spacing: 24) {
             settingsBlock(model.text("语言", "Language"), icon: "globe") {
                 HStack {
-                    VStack(alignment: .leading, spacing: 5) {
-                        Text(model.text("界面语言", "Interface Language")).font(.system(size: 13, weight: .medium))
-                        Text(model.text("切换后即时生效，记录继续进行。", "Applies immediately while recording continues."))
-                            .font(.system(size: 11)).foregroundStyle(.secondary)
-                    }
+                    Text(model.text("界面语言", "Interface Language")).font(.system(size: 13, weight: .medium))
                     Spacer()
                     Picker(model.text("语言", "Language"), selection: $model.language) {
                         ForEach(AppLanguage.allCases) { language in Text(language.displayName).tag(language) }
@@ -298,48 +283,20 @@ struct DashboardView: View {
             }
             settingsBlock(model.text("采样", "Sampling"), icon: "metronome") {
                 HStack {
-                    VStack(alignment: .leading, spacing: 5) {
-                        Text(model.text("采样间隔", "Sampling Interval")).font(.system(size: 13, weight: .medium))
-                        Text(model.text("较长的间隔可以降低采集和绘图开销。", "Longer intervals reduce sampling and chart overhead.")).font(.system(size: 11)).foregroundStyle(.secondary)
-                    }
+                    Text(model.text("采样间隔", "Sampling Interval")).font(.system(size: 13, weight: .medium))
                     Spacer()
                     Picker(model.text("采样间隔", "Sampling Interval"), selection: $model.interval) {
                         ForEach([1.0, 2, 5, 10], id: \.self) { interval in Text(model.text("\(Int(interval)) 秒", "\(Int(interval)) seconds")).tag(interval) }
                     }.labelsHidden().frame(width: 120)
                 }
-                Divider()
-                Text(model.text("应用运行期间采集；关闭窗口后继续，退出应用后停止。Mac 休眠时不采集，唤醒后继续。曲线中的空白表示没有记录。", "Recording continues while the app is running, including with its window closed. It stops when you quit, pauses during sleep, and resumes on wake. Gaps indicate periods without records.")).font(.system(size: 12)).foregroundStyle(.secondary).lineSpacing(5)
             }
             settingsBlock(model.text("历史记录", "History"), icon: "internaldrive") {
                 HStack {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text(model.text("\(model.recordCount.formatted(.number.locale(model.language.locale))) 条原始记录", "\(model.recordCount.formatted(.number.locale(model.language.locale))) original samples")).font(.system(size: 19, weight: .semibold, design: .rounded))
-                        Text(model.text("自动保留最近 7 天，下次采集时清理过期数据。", "Keeps the last 7 days and periodically removes expired samples."))
-                            .font(.system(size: 11)).foregroundStyle(.secondary)
-                    }
+                    Text(model.text("\(model.recordCount.formatted(.number.locale(model.language.locale))) 条原始记录", "\(model.recordCount.formatted(.number.locale(model.language.locale))) original samples")).font(.system(size: 19, weight: .semibold, design: .rounded))
                     Spacer()
                     Button(model.text("在 Finder 中显示", "Show in Finder")) { model.revealHistory() }.disabled(model.databaseURL == nil)
-                }
-                if let url = model.databaseURL {
-                    Text(url.path).font(.system(size: 10, design: .monospaced)).foregroundStyle(.secondary).textSelection(.enabled)
-                }
-                Divider()
-                HStack {
-                    Text(model.text("CSV 导出包含所选范围内全部原始样本。长时间曲线按时间桶聚合展示。", "CSV exports include all original samples in the selected range. Longer ranges display time-bucket averages.")).font(.system(size: 11)).foregroundStyle(.secondary)
-                    Spacer()
                     Button(model.text("清空历史记录", "Clear History"), role: .destructive) { confirmClear = true }
                 }
-            }
-            settingsBlock(model.text("指标说明", "About the Metrics"), icon: "info.circle") {
-                definition(model.text("CPU 频率", "CPU Frequency"), model.text("来自 CPU 性能状态驻留计数与芯片频率表，表示采样区间中核心活跃时的加权平均频率。不同于某一瞬间的时钟；核心完全空闲或读数不可用时显示空白。", "Computed from CPU performance-state residency and the chip frequency table. This is a weighted average during active core time, rather than an instantaneous clock reading. Fully idle cores and unavailable readings remain blank."))
-                definition(model.text("数据源", "CPU Source"), model.source(model.latest?.frequencySource ?? model.text("正在初始化系统采样器。", "Initializing the system sampler.")))
-                definition(model.text("内存占用", "Memory Used"), model.text("统计系统使用的物理内存，包含压缩器占用，不把压缩前的逻辑大小重复计入；GiB = 1,073,741,824 字节。不同于内存压力。", "Physical memory used by the system, including compressed-memory storage without counting its original logical size again. GiB = 1,073,741,824 bytes. This is distinct from memory pressure."))
-                definition(model.text("GPU 使用率", "GPU Usage"), model.text("优先使用 GPU 活跃状态占总驻留时间的比例；备用数据为驱动报告的设备使用率，具体来源见下方。读数不可用时保留空白，旧版历史没有 GPU 数据。", "Prefers active GPU-state time as a share of total residency. The fallback is device utilization reported by the driver; its source is listed below. Unavailable readings remain blank. Older history may contain no GPU data."))
-                definition(model.text("GPU 数据源", "GPU Source"), model.source(model.latest?.gpuSource ?? model.text("正在初始化 GPU 采样器。", "Initializing the GPU sampler.")))
-                definition(model.text("网络收发", "Network Traffic"), model.text("记录物理网卡接收、发送的字节速率，排除回环与 VPN 等虚拟接口，避免重复计算。1 KiB/s = 1,024 字节/秒。首次采样、暂停恢复和网卡切换需要重新建立基线。", "Receive and send rates for physical network interfaces, excluding loopback, VPN and other virtual interfaces to avoid double counting. 1 KiB/s = 1,024 bytes/second. Initial sampling, resuming and interface changes establish a new baseline."))
-                definition(model.text("网络数据源", "Network Source"), model.source(model.latest?.networkSource ?? model.text("正在初始化网络采样器。", "Initializing the network sampler.")))
-                definition(model.text("兼容性", "Compatibility"), model.text("Apple Silicon 的频率采集使用 macOS IOReport 系统接口。系统升级可能改变该接口；无法读取时保留缺失值，并继续记录内存和 CPU 使用率。", "Apple Silicon frequency sampling uses macOS IOReport. System updates may change this interface. Unavailable readings remain missing, while memory and CPU usage continue to be recorded."))
-                definition(model.text("隐私", "Privacy"), model.text("采集和历史记录全部在本机完成，无账号、无联网传输。", "Sampling and history stay on this Mac. No account or network transmission is required."))
             }
         }
         .buttonStyle(.bordered)
@@ -353,13 +310,7 @@ struct DashboardView: View {
             .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 12))
             .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color.primary.opacity(0.05)))
     }
-    private func definition(_ label: String, _ detail: String) -> some View {
-        HStack(alignment: .top, spacing: 20) {
-            Text(label).font(.system(size: 12, weight: .medium))
-                .frame(width: model.language == .english ? 112 : 65, alignment: .leading)
-            Text(detail).font(.system(size: 12)).foregroundStyle(.secondary).lineSpacing(5).textSelection(.enabled)
-        }
-    }
+
 }
 
 private enum ChartKind {
@@ -370,14 +321,6 @@ private enum ChartKind {
         case .memory: return model.text("内存占用", "Memory Used")
         case .gpu: return model.text("GPU 使用率", "GPU Usage")
         case .network: return model.text("网络收发", "Network Traffic")
-        }
-    }
-    func subtitle(in model: MonitorModel) -> String {
-        switch self {
-        case .frequency: return model.text("活跃核心的平均工作频率", "Average frequency of active cores")
-        case .memory: return model.text("系统已使用的物理内存", "Physical memory in use")
-        case .gpu: return model.text("系统 GPU 的忙碌程度", "GPU activity over each sample interval")
-        case .network: return model.text("物理网卡每秒接收与发送字节", "Physical-interface receive and send rates")
         }
     }
 }
@@ -450,14 +393,8 @@ private struct MetricChartCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .top) {
-                VStack(alignment: .leading, spacing: 5) {
-                    Text(kind.title(in: model)).font(.system(size: 14, weight: .semibold))
-                        .lineLimit(1).minimumScaleFactor(0.8)
-                    Text(kind.subtitle(in: model))
-                        .font(.system(size: 10)).foregroundStyle(.secondary)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.75)
-                }
+                Text(kind.title(in: model)).font(.system(size: 14, weight: .semibold))
+                    .lineLimit(1).minimumScaleFactor(0.8)
                 Spacer()
                 chartLegend.lineLimit(1).minimumScaleFactor(0.8)
             }
@@ -515,7 +452,7 @@ private struct MetricChartCard: View {
                 if unavailable {
                     VStack(spacing: 7) {
                         Image(systemName: kind == .frequency ? "waveform.path" : "chart.xyaxis.line").font(.system(size: 19)).foregroundStyle(.tertiary)
-                        Text(model.samples.isEmpty ? model.text("记录正在积累，曲线会随采样出现", "Charts will appear as samples are recorded") : model.text("\(kind.title(in: model))暂不可用", "\(kind.title(in: model)) is unavailable"))
+                        Text(model.samples.isEmpty ? model.text("暂无数据", "No data") : model.text("暂不可用", "Unavailable"))
                             .font(.system(size: 11)).foregroundStyle(.secondary)
                             .lineLimit(1).minimumScaleFactor(0.8)
                         if kind != .memory && !model.samples.isEmpty {
@@ -528,7 +465,7 @@ private struct MetricChartCard: View {
             HStack {
                 Text(unit).font(.system(size: 9, weight: .medium)).foregroundStyle(.tertiary)
                 Spacer()
-                Text(selected.map { model.formattedDate($0.timestamp, date: .abbreviated, time: .standard) } ?? model.text("移动指针查看记录", "Hover to inspect a sample"))
+                Text(selected.map { model.formattedDate($0.timestamp, date: .abbreviated, time: .standard) } ?? "")
                     .font(.system(size: 9)).foregroundStyle(.secondary).monospacedDigit()
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
@@ -561,7 +498,7 @@ private struct MetricChartCard: View {
                 Text(model.text("总计 \(MetricFormat.gibibytes(model.latest?.memoryTotalBytes)) GiB", "Total \(MetricFormat.gibibytes(model.latest?.memoryTotalBytes)) GiB"))
                     .font(.system(size: 10)).foregroundStyle(.secondary)
             case .gpu:
-                legend(model.text("使用率", "Usage"), value: "\(MetricFormat.percent(focusedSample?.gpuUsagePercent))%", color: Palette.gpu)
+                legend(focusedSample?.gpuSource?.contains("备用来源") == true ? model.text("备用", "Fallback") : model.text("使用率", "Usage"), value: "\(MetricFormat.percent(focusedSample?.gpuUsagePercent))%", color: Palette.gpu)
             case .network:
                 legend(model.text("↓ 接收", "↓ Receive"), value: MetricFormat.rateLabel(focusedSample?.networkReceivedBytesPerSecond), color: Palette.received)
                 legend(model.text("↑ 发送", "↑ Send"), value: MetricFormat.rateLabel(focusedSample?.networkSentBytesPerSecond), color: Palette.sent)

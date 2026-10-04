@@ -206,7 +206,7 @@ final class HistoryStore {
 
     /// Exports original rows, regardless of the chart's display point limit.
     func exportCSV(to url: URL, since: Date, until: Date = Date()) throws {
-        try synchronized {
+        try synchronized { () throws -> Void in
             try purgeIfNeeded(now: Date())
             let statement = try prepare("SELECT \(Self.columns) FROM samples WHERE timestamp >= ? AND timestamp <= ? ORDER BY timestamp ASC;")
             defer { sqlite3_finalize(statement) }
@@ -221,30 +221,41 @@ final class HistoryStore {
             defer { try? FileManager.default.removeItem(at: temporaryURL) }
             let handle = try FileHandle(forWritingTo: temporaryURL)
             defer { try? handle.close() }
-            try handle.write(contentsOf: Data((
+            let header: String =
                 "timestamp_iso8601,cpu_usage_percent,memory_used_bytes,memory_total_bytes,"
                 + "swap_used_bytes,efficiency_mhz,performance_mhz,frequency_source,"
                 + "gpu_usage_percent,network_received_bytes_per_second,network_sent_bytes_per_second,"
                 + "gpu_source,network_source\r\n"
-            ).utf8))
+            try handle.write(contentsOf: Data(header.utf8))
             let formatter = ISO8601DateFormatter()
             formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
             formatter.timeZone = TimeZone(secondsFromGMT: 0)
+            func optionalNumber(_ value: Double?) -> String {
+                guard let value else { return "" }
+                return String(value)
+            }
             var result = sqlite3_step(statement)
             while result == SQLITE_ROW {
                 let sample = readSample(statement)
-                let fields = [
-                    formatter.string(from: sample.timestamp),
-                    String(sample.cpuUsagePercent), String(sample.memoryUsedBytes),
-                    String(sample.memoryTotalBytes), String(sample.swapUsedBytes),
-                    sample.efficiencyMHz.map { String($0) } ?? "",
-                    sample.performanceMHz.map { String($0) } ?? "", sample.frequencySource,
-                    sample.gpuUsagePercent.map { String($0) } ?? "",
-                    sample.networkReceivedBytesPerSecond.map { String($0) } ?? "",
-                    sample.networkSentBytesPerSecond.map { String($0) } ?? "",
-                    sample.gpuSource ?? "", sample.networkSource ?? ""
-                ]
-                let line = fields.map(Self.csvField).joined(separator: ",") + "\r\n"
+                // Give older Swift type checkers a String context for each
+                // field instead of one large optional-heavy array expression.
+                var fields: [String] = []
+                fields.reserveCapacity(13)
+                fields.append(formatter.string(from: sample.timestamp))
+                fields.append(String(sample.cpuUsagePercent))
+                fields.append(String(sample.memoryUsedBytes))
+                fields.append(String(sample.memoryTotalBytes))
+                fields.append(String(sample.swapUsedBytes))
+                fields.append(optionalNumber(sample.efficiencyMHz))
+                fields.append(optionalNumber(sample.performanceMHz))
+                fields.append(sample.frequencySource)
+                fields.append(optionalNumber(sample.gpuUsagePercent))
+                fields.append(optionalNumber(sample.networkReceivedBytesPerSecond))
+                fields.append(optionalNumber(sample.networkSentBytesPerSecond))
+                fields.append(sample.gpuSource ?? "")
+                fields.append(sample.networkSource ?? "")
+                let escapedFields: [String] = fields.map(Self.csvField)
+                let line: String = escapedFields.joined(separator: ",") + "\r\n"
                 try handle.write(contentsOf: Data(line.utf8))
                 result = sqlite3_step(statement)
             }

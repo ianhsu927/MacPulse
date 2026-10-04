@@ -69,6 +69,7 @@ echo "Building MacPulse…"
 
 cp -X "$PROJECT_DIR/Info.plist" "$STAGING_APP/Contents/Info.plist"
 cp -X "$ICON_FILE" "$STAGING_APP/Contents/Resources/MacPulse.icns"
+cp -X "$PROJECT_DIR/ThirdPartyNotices.txt" "$STAGING_APP/Contents/Resources/ThirdPartyNotices.txt"
 plutil -lint "$STAGING_APP/Contents/Info.plist"
 # Generated/copied files may carry Finder metadata; strip it from this bundle
 # before signing. Only the app staging directory is affected.

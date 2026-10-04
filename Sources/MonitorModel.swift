@@ -42,15 +42,18 @@ enum HistoryRange: String, CaseIterable, Identifiable {
 
 private final class SamplingWorker {
     lazy var sampler = TelemetrySampler()
+    private let directory: URL?
     private var store: HistoryStore?
     private var recordingSegment = Int.random(in: 1...Int.max)
     private var plotCache: [HistoryRange: (refreshedAt: Date, samples: [MetricSample])] = [:]
+
+    init(directory: URL? = nil) { self.directory = directory }
 
     // Cache successful initialization only. A temporary filesystem failure can
     // recover on a later sampling tick without requiring an application restart.
     func database() throws -> HistoryStore {
         if let store { return store }
-        let value = try HistoryStore()
+        let value = try HistoryStore(directory: directory)
         store = value
         return value
     }
@@ -99,6 +102,11 @@ final class MonitorModel: ObservableObject {
     }
     @Published var samples: [MetricSample] = []
     @Published var latest: MetricSample?
+    let liveStatus = LiveStatusModel()
+    var cpuTemperatureCelsius: Double? { liveStatus.cpuTemperatureCelsius }
+    var cpuTemperatureSource: String? { liveStatus.cpuTemperatureSource }
+    var liveNetworkReceivedBytesPerSecond: Double? { liveStatus.receivedBytesPerSecond }
+    var liveNetworkSentBytesPerSecond: Double? { liveStatus.sentBytesPerSecond }
     @Published var recordCount = 0
     @Published var networkPlotMaximum = 0.0
     @Published var isRecording = true
@@ -123,7 +131,13 @@ final class MonitorModel: ObservableObject {
         return String(cString: chars)
     }()
     private let queue = DispatchQueue(label: "local.ian.macpulse.sampling", qos: .utility)
-    private let worker = SamplingWorker()
+    private let worker: SamplingWorker
+    private let liveQueue = DispatchQueue(label: "local.ian.macpulse.live-status", qos: .utility)
+    private let liveSampler = LiveMetricsSampler()
+    private var liveTimer: Timer?
+    private var livePending = false
+    private var liveGeneration = 0
+    private var isSleeping = false
     private var timer: Timer?
     private var pending = false
     private var needsRefresh = false
@@ -132,25 +146,44 @@ final class MonitorModel: ObservableObject {
     private var activity: NSObjectProtocol?
     private var observers: [NSObjectProtocol] = []
 
-    init() {
+    init(historyDirectory: URL? = nil) {
+        worker = SamplingWorker(directory: historyDirectory)
         let saved = UserDefaults.standard.double(forKey: "samplingInterval")
         if [1.0, 2, 5, 10].contains(saved) { interval = saved }
         let center = NSWorkspace.shared.notificationCenter
         observers.append(center.addObserver(forName: NSWorkspace.willSleepNotification, object: nil, queue: .main) { [weak self] _ in
-            self?.timer?.invalidate()
+            guard let self else { return }
+            self.isSleeping = true
+            self.timer?.invalidate()
+            self.liveTimer?.invalidate()
+            self.liveGeneration += 1
+            self.liveStatus.cpuTemperatureCelsius = nil
+            self.liveStatus.cpuTemperatureSource = nil
+            self.liveStatus.receivedBytesPerSecond = nil
+            self.liveStatus.sentBytesPerSecond = nil
+            self.updateActivity()
         })
         observers.append(center.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in
-            self?.resetBaseline()
-            self?.schedule()
-            self?.refresh(recording: self?.isRecording ?? false)
+            guard let self else { return }
+            self.isSleeping = false
+            self.resetBaseline()
+            self.liveQueue.async { [weak self] in self?.liveSampler.reset() }
+            self.schedule()
+            self.scheduleLiveStatus()
+            self.updateActivity()
+            self.refresh(recording: self.isRecording)
+            self.refreshLiveStatus()
         })
         schedule()
+        scheduleLiveStatus()
         updateActivity()
         refresh(recording: true)
+        refreshLiveStatus()
     }
 
     deinit {
         timer?.invalidate()
+        liveTimer?.invalidate()
         if let activity { ProcessInfo.processInfo.endActivity(activity) }
         for observer in observers { NSWorkspace.shared.notificationCenter.removeObserver(observer) }
     }
@@ -184,15 +217,14 @@ final class MonitorModel: ObservableObject {
 
     func toggleRecording() {
         isRecording.toggle()
-        updateActivity()
         if isRecording { resetBaseline(); refresh(recording: true) }
     }
 
     private func updateActivity() {
         if let activity { ProcessInfo.processInfo.endActivity(activity); self.activity = nil }
-        if isRecording {
+        if !isSleeping {
             activity = ProcessInfo.processInfo.beginActivity(options: .userInitiatedAllowingIdleSystemSleep,
-                                                             reason: text("持续记录 Mac 性能与网络曲线", "Continuously recording Mac performance and network charts"))
+                                                             reason: text("更新 Mac 实时状态", "Updating live Mac status"))
         }
     }
 
@@ -202,6 +234,7 @@ final class MonitorModel: ObservableObject {
 
     func schedule() {
         timer?.invalidate()
+        guard !isSleeping else { return }
         let value = Timer(timeInterval: interval, repeats: true) { [weak self] _ in
             guard let self, self.isRecording else { return }
             self.refresh(recording: true)
@@ -211,7 +244,42 @@ final class MonitorModel: ObservableObject {
         timer = value
     }
 
+    private func scheduleLiveStatus() {
+        liveTimer?.invalidate()
+        guard !isSleeping else { return }
+        let value = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
+            self?.refreshLiveStatus()
+        }
+        value.tolerance = 0.1
+        RunLoop.main.add(value, forMode: .common)
+        liveTimer = value
+    }
+
+    private func refreshLiveStatus() {
+        // Skip ticks while a read is in progress instead of building a backlog.
+        guard !isSleeping, !livePending else { return }
+        livePending = true
+        let generation = liveGeneration
+        liveQueue.async { [weak self] in
+            guard let self else { return }
+            let reading = self.liveSampler.sample()
+            DispatchQueue.main.async {
+                self.livePending = false
+                guard !self.isSleeping else { return }
+                guard generation == self.liveGeneration else {
+                    self.refreshLiveStatus()
+                    return
+                }
+                self.liveStatus.cpuTemperatureCelsius = reading.temperature.temperatureCelsius
+                self.liveStatus.cpuTemperatureSource = reading.temperature.temperatureCelsius == nil ? nil : reading.temperature.source
+                self.liveStatus.receivedBytesPerSecond = reading.receivedBytesPerSecond
+                self.liveStatus.sentBytesPerSecond = reading.sentBytesPerSecond
+            }
+        }
+    }
+
     func refresh(recording: Bool, forceGraphRefresh: Bool = false) {
+        guard !isSleeping else { return }
         let forceGraphRefresh = forceGraphRefresh || !recording
         guard !pending else {
             needsRefresh = true

@@ -165,8 +165,8 @@ struct DashboardView: View {
             Button { model.toggleRecording() } label: {
                 Image(systemName: model.isRecording ? "pause.fill" : "play.fill").frame(width: 19, height: 19)
             }
-            .help(model.isRecording ? model.text("暂停采集（⌘P）", "Pause recording (⌘P)") : model.text("继续采集（⌘P）", "Resume recording (⌘P)"))
-            .accessibilityLabel(model.isRecording ? model.text("暂停采集", "Pause Recording") : model.text("继续采集", "Resume Recording"))
+            .help(model.isRecording ? model.text("暂停记录（⌘P）", "Pause recording (⌘P)") : model.text("继续记录（⌘P）", "Resume recording (⌘P)"))
+            .accessibilityLabel(model.isRecording ? model.text("暂停记录", "Pause Recording") : model.text("继续记录", "Resume Recording"))
             Button { model.exportCSV() } label: { Label(model.text("导出", "Export"), systemImage: "square.and.arrow.up") }
                 .disabled(model.samples.isEmpty).help(model.text("导出 CSV", "Export CSV"))
         }

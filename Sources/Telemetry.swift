@@ -653,7 +653,7 @@ struct NetworkRateTracker {
     }
 }
 
-private final class NetworkRateSensor {
+final class NetworkRateSensor {
     private var tracker = NetworkRateTracker()
     private(set) var status = "网络 · 等待下一次采样"
 

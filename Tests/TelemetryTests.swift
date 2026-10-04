@@ -60,7 +60,7 @@ import XCTest
 final class TelemetryTests: XCTestCase {
     func testCPUUsageIncludesNiceButExcludesIdleAndHandlesCounterWrap() {
         XCTAssertEqual(TelemetryMath.cpuUsage(previous: [0, 0, 0, 0], current: [20, 10, 60, 10]), 40, accuracy: 0.00001)
-        XCTAssertEqual(TelemetryMath.cpuUsage(previous: [.max - 4, 0, 0, 0], current: [5, 0, 10, 0]), 50, accuracy: 0.00001)
+        XCTAssertEqual(TelemetryMath.cpuUsage(previous: [UInt32.max - 4, 0, 0, 0], current: [5, 0, 10, 0]), 50, accuracy: 0.00001)
         XCTAssertEqual(TelemetryMath.cpuUsage(previous: [1, 1, 1, 1], current: [1, 1, 1, 1]), 0)
     }
 
